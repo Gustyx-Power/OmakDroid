@@ -13,8 +13,8 @@ android {
 
     defaultConfig {
         applicationId = "id.xms.omakdroid"
-        minSdk = 29
-        targetSdk = 36
+        minSdk = 28
+        targetSdk = 28
         versionCode = 1
         versionName = "1.0"
 
@@ -36,6 +36,12 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
