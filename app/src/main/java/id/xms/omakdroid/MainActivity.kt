@@ -24,6 +24,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import id.xms.omakdroid.ui.theme.OmakDroidTheme
+import android.content.Context
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,10 +105,26 @@ fun FakeBiosScreen(
 
 @Composable
 fun DesktopScreen() {
+    val context = LocalContext.current
+    var testResult by remember { mutableStateOf("Booting OmakDroid Kernel...") }
+    var testColor by remember { mutableStateOf(Color.Yellow) }
+    
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(500)
+        val result = bootOmakDroidKernel(context)
+        testResult = result
+        testColor = if (result.contains("Error") || result.contains("killed") || result.contains("Bad ELF")) {
+            Color.Red
+        } else {
+            Color(0xFF00FF00)
+        }
+    }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1A1A)),
+            .background(Color(0xFF1A1A1A))
+            .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -126,6 +144,117 @@ fun DesktopScreen() {
                 fontFamily = FontFamily.Monospace,
                 fontSize = 16.sp
             )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text(
+                text = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                color = Color.Gray,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "KERNEL INITIALIZATION",
+                color = Color.Cyan,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = testResult,
+                color = testColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .verticalScroll(rememberScrollState())
+            )
         }
+    }
+}
+
+fun bootOmakDroidKernel(context: Context): String {
+    return try {
+        val prootPath = File(context.applicationInfo.nativeLibraryDir, "libproot.so").absolutePath
+        val rootfsPath = File(context.filesDir, "rootfs").absolutePath
+        
+        val prootFile = File(prootPath)
+        if (!prootFile.exists()) {
+            return "Error: PRoot binary not found at $prootPath\n" +
+                   "Expected location: ${context.applicationInfo.nativeLibraryDir}/libproot.so\n" +
+                   "Please ensure the binary is placed in app/src/main/jniLibs/arm64-v8a/libproot.so before building."
+        }
+        
+        val rootfsDir = File(rootfsPath)
+        if (!rootfsDir.exists()) {
+            return "Error: Rootfs not found at $rootfsPath\n" +
+                   "Please ensure rootfs is extracted during BIOS initialization."
+        }
+        
+        android.util.Log.i("OmakKernel", "Booting Linux environment...")
+        android.util.Log.i("OmakKernel", "PRoot: $prootPath")
+        android.util.Log.i("OmakKernel", "Rootfs: $rootfsPath")
+        
+        val command = listOf(
+            prootPath,
+            "--link2symlink",
+            "-0",
+            "-r", rootfsPath,
+            "-b", "/dev",
+            "-b", "/proc",
+            "-b", "/sys",
+            "-w", "/root",
+            "/usr/bin/env",
+            "-i",
+            "HOME=/root",
+            "TERM=xterm-256color",
+            "PATH=/bin:/usr/bin:/sbin:/usr/sbin",
+            "/bin/bash",
+            "-c",
+            "echo 'OMAKDROID ROOT SYSTEM ONLINE' && echo '---' && uname -a && echo '---' && cat /etc/os-release"
+        )
+        
+        val processBuilder = ProcessBuilder(command)
+        processBuilder.redirectErrorStream(true)
+        
+        val env = processBuilder.environment()
+        env["PROOT_TMP_DIR"] = context.cacheDir.absolutePath
+        
+        val process = processBuilder.start()
+        
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        
+        val completed = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+        val exitCode = if (completed) process.exitValue() else -999
+        
+        android.util.Log.i("OmakKernel", "Exit code: $exitCode")
+        android.util.Log.i("OmakKernel", "Output: $output")
+        
+        val result = StringBuilder()
+        result.append("PRoot: $prootPath\n")
+        result.append("Rootfs: $rootfsPath\n")
+        result.append("Exit Code: $exitCode\n")
+        result.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+        
+        if (exitCode == 0 && output.contains("OMAKDROID ROOT SYSTEM ONLINE")) {
+            result.append("✓ KERNEL BOOT SUCCESS\n\n")
+            result.append(output)
+        } else if (!completed) {
+            result.append("✗ TIMEOUT: Kernel boot did not complete within 10 seconds\n\n")
+            result.append("Partial output:\n$output")
+        } else {
+            result.append("✗ KERNEL BOOT FAILED\n\n")
+            result.append("Output:\n$output")
+        }
+        
+        result.toString()
+        
+    } catch (e: Exception) {
+        android.util.Log.e("OmakKernel", "Exception during kernel boot", e)
+        "Error: Exception occurred during kernel boot\n" +
+        "Type: ${e.javaClass.simpleName}\n" +
+        "Message: ${e.message}\n" +
+        "Stack trace:\n${e.stackTraceToString().take(500)}"
     }
 }

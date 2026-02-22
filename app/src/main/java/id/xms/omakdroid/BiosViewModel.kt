@@ -27,59 +27,56 @@ class BiosViewModel : ViewModel() {
                 val filesDir = context.filesDir
                 appendLog("[BIOS] Target directory: ${filesDir.absolutePath}")
 
-                // Extract rootfs/
                 val rootfsDir = File(filesDir, "rootfs")
-                if (!rootfsDir.exists()) {
+                
+                if (rootfsDir.exists() && rootfsDir.list()?.isNotEmpty() == true) {
+                    appendLog("[BIOS] Rootfs already extracted, skipping...")
+                } else {
                     rootfsDir.mkdirs()
                     appendLog("[BIOS] Created rootfs directory")
-                }
-
-                try {
-                    val assetManager = context.assets
-                    val rootfsAssets = assetManager.list("rootfs") ?: emptyArray()
-                    appendLog("[BIOS] Found ${rootfsAssets.size} assets in rootfs/")
                     
-                    rootfsAssets.forEach { asset ->
-                        appendLog("[BIOS] Extracting rootfs/$asset...")
-                        val inputStream = assetManager.open("rootfs/$asset")
-                        val outputFile = File(rootfsDir, asset)
-                        FileOutputStream(outputFile).use { output ->
-                            inputStream.copyTo(output)
-                        }
-                        appendLog("[BIOS] ✓ Extracted: ${outputFile.absolutePath}")
-                    }
-                } catch (e: Exception) {
-                    appendLog("[BIOS] No rootfs assets found or extraction failed")
-                    Log.e("OmakDroidExt", "ROOTFS EXTRACTION FAILED", e)
-                }
-
-                // Extract bin/proot
-                val binDir = File(filesDir, "bin")
-                if (!binDir.exists()) {
-                    binDir.mkdirs()
-                    appendLog("[BIOS] Created bin directory")
-                }
-
-                try {
+                    appendLog("[BIOS] Copying omak_core.tar to cache...")
                     val assetManager = context.assets
-                    val binAssets = assetManager.list("bin") ?: emptyArray()
-                    appendLog("[BIOS] Found ${binAssets.size} assets in bin/")
+                    val tarFile = File(context.cacheDir, "omak_core.tar")
                     
-                    binAssets.forEach { asset ->
-                        appendLog("[BIOS] Extracting bin/$asset...")
-                        val inputStream = assetManager.open("bin/$asset")
-                        val outputFile = File(binDir, asset)
-                        FileOutputStream(outputFile).use { output ->
-                            inputStream.copyTo(output)
+                    assetManager.open("rootfs/omak_core.tar").use { input ->
+                        FileOutputStream(tarFile).use { output ->
+                            input.copyTo(output)
                         }
-                        // Make executable
-                        outputFile.setExecutable(true, false)
-                        appendLog("[BIOS] ✓ Extracted & chmod +x: ${outputFile.absolutePath}")
                     }
-                } catch (e: Exception) {
-                    appendLog("[BIOS] No bin assets found or extraction failed")
-                    Log.e("OmakDroidExt", "BIN EXTRACTION FAILED", e)
+                    appendLog("[BIOS] ✓ Tar archive staged: ${tarFile.absolutePath}")
+                    
+                    appendLog("[BIOS] Unpacking via Native Tar (This may take a minute)...")
+                    appendLog("[BIOS] Please wait...")
+                    
+                    val tarProcess = ProcessBuilder(
+                        "tar",
+                        "-xf",
+                        tarFile.absolutePath,
+                        "-C",
+                        rootfsDir.absolutePath
+                    ).redirectErrorStream(true).start()
+                    
+                    val tarOutput = tarProcess.inputStream.bufferedReader().use { it.readText() }
+                    val tarExitCode = tarProcess.waitFor()
+                    
+                    if (tarExitCode == 0 || tarExitCode == 1) {
+                        appendLog("[BIOS] ✓ Rootfs unpacked successfully")
+                        if (tarExitCode == 1) {
+                            appendLog("[BIOS] Note: Some hardlinks may have failed (non-critical)")
+                        }
+                    } else {
+                        appendLog("[BIOS] ✗ Tar extraction failed (exit code: $tarExitCode)")
+                        appendLog("[BIOS] Output: $tarOutput")
+                        Log.e("OmakDroidExt", "TAR FAILED: $tarOutput")
+                    }
+                    
+                    tarFile.delete()
+                    appendLog("[BIOS] ✓ Cleaned up temporary tar file")
                 }
+
+                // PRoot binary is now handled by Android Package Manager as libproot.so
+                appendLog("[BIOS] PRoot binary loaded from native library directory")
 
                 appendLog("[BIOS] Asset extraction complete!")
                 appendLog("[BIOS] Booting OmakDroid Kernel...")
