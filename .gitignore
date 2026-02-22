@@ -12,6 +12,8 @@
 /captures
 .externalNativeBuild
 .cxx
+.vscode
+.kiro
 
 # Module build directories
 */build/
