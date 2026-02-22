@@ -25,8 +25,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-// --- MVI Intents & Contracts ---
+import id.xms.omakdroid.core.common.AssetExtractor
 
 data class BiosState(
     val logs: List<String> = emptyList(),
@@ -43,7 +42,7 @@ sealed interface BiosEffect {
 
 // --- ViewModel Core Logic ---
 
-class BiosViewModel : ViewModel() {
+class BiosViewModel(private val assetExtractor: AssetExtractor) : ViewModel() {
     private val _state = MutableStateFlow(BiosState())
     val state: StateFlow<BiosState> = _state.asStateFlow()
 
@@ -55,13 +54,7 @@ class BiosViewModel : ViewModel() {
         "Validating CPU Microcode...",
         "Mounting /proc...",
         "Mounting /sys...",
-        "Mounting /dev...",
-        "Unpacking OmakDroid rootfs [debian12-arm64]...",
-        "Extracting binaries...",
-        "Setting up PRoot namespace bindings...",
-        "Starting kernel translation layer...",
-        "Configuring Framebuffer /dev/graphics/fb0...",
-        "Boot sequence complete."
+        "Mounting /dev..."
     )
 
     fun processIntent(intent: BiosIntent) {
@@ -71,9 +64,21 @@ class BiosViewModel : ViewModel() {
     }
 
     private suspend fun runInstallationSequence() {
+        if (assetExtractor.isSystemInstalled()) {
+            _state.update { 
+                it.copy(
+                    logs = it.logs + "System already installed. Fast-forwarding boot sequence...",
+                    progress = 100
+                )
+            }
+            delay(1000)
+            _effect.emit(BiosEffect.NavigateToDesktop)
+            return
+        }
+
         installSteps.forEachIndexed { index, log ->
-            delay((200..800).random().toLong()) // Faux jitter allocation simulate
-            val currentProgress = ((index + 1) * 100) / installSteps.size
+            delay((200..400).random().toLong())
+            val currentProgress = ((index + 1) * 20) / installSteps.size
             _state.update {
                 it.copy(
                     logs = it.logs + log,
@@ -81,8 +86,39 @@ class BiosViewModel : ViewModel() {
                 )
             }
         }
-        delay(1000)
-        _effect.emit(BiosEffect.NavigateToDesktop)
+
+        try {
+            _state.update { it.copy(logs = it.logs + "Extracting binaries (PRoot namespace)...", progress = 25) }
+            assetExtractor.installBinary()
+
+            _state.update { it.copy(logs = it.logs + "Unpacking OmakDroid rootfs [debian12-arm64]...", progress = 30) }
+            assetExtractor.unpackRootfs().collect { logUpdate ->
+                _state.update {
+                    val logsToKeep = if (it.logs.size > 20) it.logs.drop(1) else it.logs
+                    it.copy(
+                        logs = logsToKeep + logUpdate,
+                        progress = minOf(95, it.progress + 2)
+                    )
+                }
+            }
+
+            _state.update {
+                it.copy(
+                    logs = it.logs + "Boot sequence complete. Configuring Framebuffer /dev/graphics/fb0...",
+                    progress = 100
+                )
+            }
+            delay(1000)
+            _effect.emit(BiosEffect.NavigateToDesktop)
+            
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(
+                    logs = it.logs + "FATAL KERNEL PANIC: Extraction failed - ${e.message}",
+                    progress = 0
+                )
+            }
+        }
     }
 }
 
