@@ -12,4 +12,6 @@ object NativeEngine {
     external fun initEngine(): Boolean
     external fun executeCommand(command: String): Boolean
     external fun pingEngine(): String
+    external fun bootLinuxKernel(prootPath: String, rootfsPath: String, tmpDir: String): String
+    external fun executeLinuxCommand(command: String, prootPath: String, rootfsPath: String, tmpDir: String): String
 }
