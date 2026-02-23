@@ -55,6 +55,7 @@ fun TerminalScreen() {
             "",
             "Welcome to OmakDroid Terminal",
             "Type 'help' for available commands, or any Linux command to execute.",
+            "DNS configured: 8.8.8.8, 1.1.1.1",
             ""
         )
     }
@@ -132,24 +133,30 @@ fun TerminalScreen() {
                                 // Add command to history
                                 terminalHistory = terminalHistory + "root@localhost:~# $command"
                                 
-                                // Execute command
-                                scope.launch {
-                                    val result = withContext(Dispatchers.IO) {
-                                        try {
-                                            NativeEngine.executeLinuxCommand(
-                                                command,
-                                                prootPath,
-                                                rootfsPath,
-                                                tmpDir
-                                            )
-                                        } catch (e: Exception) {
-                                            "Error: ${e.message}\n"
+                                // Set up streaming callback
+                                NativeEngine.onTerminalOutput = { line ->
+                                    terminalHistory = terminalHistory + line
+                                }
+                                
+                                // Execute command in background with streaming
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        NativeEngine.executeLinuxCommand(
+                                            command,
+                                            prootPath,
+                                            rootfsPath,
+                                            tmpDir
+                                        )
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            terminalHistory = terminalHistory + "Error: ${e.message}"
+                                        }
+                                    } finally {
+                                        withContext(Dispatchers.Main) {
+                                            isExecuting = false
+                                            NativeEngine.onTerminalOutput = null
                                         }
                                     }
-                                    
-                                    // Add result to history
-                                    terminalHistory = terminalHistory + result.trimEnd()
-                                    isExecuting = false
                                 }
                             }
                         }
