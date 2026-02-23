@@ -90,37 +90,10 @@ fun FakeBiosScreen(
     viewModel: BiosViewModel = viewModel(),
     onBootComplete: () -> Unit
 ) {
-    val context = LocalContext.current
-    val logs by viewModel.logs.collectAsState()
-    val extractionComplete by viewModel.extractionComplete.collectAsState()
-    
-    LaunchedEffect(Unit) {
-        viewModel.extractAssets(context)
-    }
-    
-    LaunchedEffect(extractionComplete) {
-        if (extractionComplete) {
-            kotlinx.coroutines.delay(2000)
-            onBootComplete()
-        }
-    }
-    
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .padding(16.dp)
-    ) {
-        Text(
-            text = logs,
-            color = Color(0xFF00FF00),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        )
-    }
+    AmericanMegatrendsBiosScreen(
+        viewModel = viewModel,
+        onBootComplete = onBootComplete
+    )
 }
 
 @Composable
