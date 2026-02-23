@@ -106,10 +106,18 @@ fun FakeBiosScreen(
 @Composable
 fun DesktopScreen() {
     val context = LocalContext.current
+    var rustEngineStatus by remember { mutableStateOf("Initializing Rust Engine...") }
     var testResult by remember { mutableStateOf("Booting OmakDroid Kernel...") }
     var testColor by remember { mutableStateOf(Color.Yellow) }
     
     LaunchedEffect(Unit) {
+        // Test Rust JNI handshake
+        try {
+            rustEngineStatus = NativeEngine.pingEngine()
+        } catch (e: Exception) {
+            rustEngineStatus = "Rust Engine Error: ${e.message}"
+        }
+        
         kotlinx.coroutines.delay(500)
         val result = bootOmakDroidKernel(context)
         testResult = result
@@ -147,6 +155,27 @@ fun DesktopScreen() {
             
             Spacer(modifier = Modifier.height(32.dp))
             
+            Text(
+                text = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                color = Color.Gray,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "RUST ENGINE STATUS",
+                color = Color.Cyan,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = rustEngineStatus,
+                color = if (rustEngineStatus.contains("ONLINE")) Color(0xFF00FF00) else Color.Red,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
                 color = Color.Gray,
