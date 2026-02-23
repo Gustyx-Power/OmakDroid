@@ -11,4 +11,5 @@ object NativeEngine {
     }
     external fun initEngine(): Boolean
     external fun executeCommand(command: String): Boolean
+    external fun pingEngine(): String
 }
