@@ -62,14 +62,24 @@ fun OmakDroidApp() {
         composable("grub") {
             GrubScreen(
                 onBootSequenceTriggered = {
-                    navController.navigate("desktop") {
+                    navController.navigate("boot_log") {
                         popUpTo("grub") { inclusive = true }
                     }
                 }
             )
         }
         
-        composable("desktop") {
+        composable("boot_log") {
+            BootLogScreen(
+                onBootComplete = {
+                    navController.navigate("terminal") {
+                        popUpTo("boot_log") { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        composable("terminal") {
             TerminalScreen()
         }
     }
