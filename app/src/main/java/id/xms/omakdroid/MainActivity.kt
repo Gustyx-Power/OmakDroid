@@ -52,15 +52,25 @@ fun OmakDroidApp() {
         composable("fake_bios") {
             FakeBiosScreen(
                 onBootComplete = {
-                    navController.navigate("desktop") {
+                    navController.navigate("grub") {
                         popUpTo("fake_bios") { inclusive = true }
                     }
                 }
             )
         }
         
+        composable("grub") {
+            GrubScreen(
+                onBootSequenceTriggered = {
+                    navController.navigate("desktop") {
+                        popUpTo("grub") { inclusive = true }
+                    }
+                }
+            )
+        }
+        
         composable("desktop") {
-            DesktopScreen()
+            TerminalScreen()
         }
     }
 }
@@ -221,63 +231,20 @@ fun bootOmakDroidKernel(context: Context): String {
                    "Please ensure rootfs is extracted during BIOS initialization."
         }
         
-        android.util.Log.i("OmakKernel", "Booting Linux environment...")
+        android.util.Log.i("OmakKernel", "Booting Linux environment via Rust Engine...")
         android.util.Log.i("OmakKernel", "PRoot: $prootPath")
         android.util.Log.i("OmakKernel", "Rootfs: $rootfsPath")
         
-        val command = listOf(
+        // Execute via Rust Engine instead of Kotlin ProcessBuilder
+        val result = NativeEngine.bootLinuxKernel(
             prootPath,
-            "--link2symlink",
-            "-0",
-            "-r", rootfsPath,
-            "-b", "/dev",
-            "-b", "/proc",
-            "-b", "/sys",
-            "-w", "/root",
-            "/usr/bin/env",
-            "-i",
-            "HOME=/root",
-            "TERM=xterm-256color",
-            "PATH=/bin:/usr/bin:/sbin:/usr/sbin",
-            "/bin/bash",
-            "-c",
-            "echo 'OMAKDROID ROOT SYSTEM ONLINE' && echo '---' && uname -a && echo '---' && cat /etc/os-release"
+            rootfsPath,
+            context.cacheDir.absolutePath
         )
         
-        val processBuilder = ProcessBuilder(command)
-        processBuilder.redirectErrorStream(true)
+        android.util.Log.i("OmakKernel", "Rust Engine Result: $result")
         
-        val env = processBuilder.environment()
-        env["PROOT_TMP_DIR"] = context.cacheDir.absolutePath
-        
-        val process = processBuilder.start()
-        
-        val output = process.inputStream.bufferedReader().use { it.readText() }
-        
-        val completed = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
-        val exitCode = if (completed) process.exitValue() else -999
-        
-        android.util.Log.i("OmakKernel", "Exit code: $exitCode")
-        android.util.Log.i("OmakKernel", "Output: $output")
-        
-        val result = StringBuilder()
-        result.append("PRoot: $prootPath\n")
-        result.append("Rootfs: $rootfsPath\n")
-        result.append("Exit Code: $exitCode\n")
-        result.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-        
-        if (exitCode == 0 && output.contains("OMAKDROID ROOT SYSTEM ONLINE")) {
-            result.append("✓ KERNEL BOOT SUCCESS\n\n")
-            result.append(output)
-        } else if (!completed) {
-            result.append("✗ TIMEOUT: Kernel boot did not complete within 10 seconds\n\n")
-            result.append("Partial output:\n$output")
-        } else {
-            result.append("✗ KERNEL BOOT FAILED\n\n")
-            result.append("Output:\n$output")
-        }
-        
-        result.toString()
+        result
         
     } catch (e: Exception) {
         android.util.Log.e("OmakKernel", "Exception during kernel boot", e)
