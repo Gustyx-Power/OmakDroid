@@ -1,7 +1,8 @@
 use jni::JNIEnv;
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::jboolean;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
 
 #[no_mangle]
 pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_initEngine(
@@ -13,9 +14,9 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_initEngine(
 
 #[no_mangle]
 pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeCommand(
-    mut env: JNIEnv,
+    _env: JNIEnv,
     _class: JClass,
-    command: JObject,
+    _command: JObject,
 ) -> jboolean {
     1
 }
@@ -51,6 +52,10 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_bootLinuxKernel<'local
         .get_string(&tmp_dir)
         .expect("Invalid tmp dir")
         .into();
+
+    // Auto-inject DNS configuration
+    let resolv_path = format!("{}/etc/resolv.conf", rootfs);
+    let _ = std::fs::write(&resolv_path, "nameserver 8.8.8.8\nnameserver 1.1.1.1\n");
 
     // Execute PRoot with the same arguments as the Kotlin version
     let output = Command::new(&proot)
@@ -121,7 +126,7 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeLinuxCommand<'l
     proot_path: JString<'local>,
     rootfs_path: JString<'local>,
     tmp_dir: JString<'local>,
-) -> jni::sys::jstring {
+) {
     // Convert JString parameters to Rust Strings
     let cmd_str: String = env
         .get_string(&command)
@@ -140,8 +145,15 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeLinuxCommand<'l
         .expect("Invalid tmp dir")
         .into();
 
-    // Execute the user's command via PRoot
-    let output = Command::new(&proot)
+    // Auto-inject DNS configuration
+    let resolv_path = format!("{}/etc/resolv.conf", rootfs);
+    let _ = std::fs::write(&resolv_path, "nameserver 8.8.8.8\nnameserver 1.1.1.1\n");
+
+    // Merge stderr to stdout
+    let full_cmd = format!("{} 2>&1", cmd_str);
+
+    // Spawn process with piped stdout for streaming
+    let mut child = match Command::new(&proot)
         .env("PROOT_TMP_DIR", &tmp)
         .arg("--link2symlink")
         .arg("-0")
@@ -164,39 +176,55 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeLinuxCommand<'l
         .arg("LOGNAME=root")
         .arg("/bin/bash")
         .arg("-c")
-        .arg(&cmd_str)
-        .output();
-
-    // Format the result - just return stdout/stderr without extra formatting
-    let result_string = match output {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            
-            let mut result = String::new();
-            if !stdout.is_empty() {
-                result.push_str(&stdout);
-            }
-            if !stderr.is_empty() {
-                if !result.is_empty() {
-                    result.push('\n');
+        .arg(&full_cmd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                // Send error message via callback
+                let error_msg = format!("Error: Failed to execute command: {}\n", e);
+                if let Ok(j_str) = env.new_string(&error_msg) {
+                    let class = env.find_class("id/xms/omakdroid/NativeEngine").ok();
+                    if let Some(cls) = class {
+                        let _ = env.call_static_method(
+                            cls,
+                            "appendOutput",
+                            "(Ljava/lang/String;)V",
+                            &[JValue::Object(&j_str.into())]
+                        );
+                    }
                 }
-                result.push_str(&stderr);
+                return;
             }
-            
-            // If both are empty, return a newline to indicate command completed
-            if result.is_empty() {
-                result.push('\n');
-            }
-            
-            result
-        }
-        Err(e) => format!("Error: Failed to execute command: {}\n", e),
-    };
+        };
 
-    // Convert result to Java string
-    let j_result = env
-        .new_string(result_string)
-        .expect("Failed to create Java string");
-    j_result.into_raw()
+    // Get stdout handle
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        
+        // Find the NativeEngine class for callbacks
+        let class = match env.find_class("id/xms/omakdroid/NativeEngine") {
+            Ok(cls) => cls,
+            Err(_) => return,
+        };
+
+        // Stream output line by line
+        for line in reader.lines() {
+            if let Ok(l) = line {
+                // Create Java string and call callback
+                if let Ok(j_str) = env.new_string(&l) {
+                    let _ = env.call_static_method(
+                        &class,
+                        "appendOutput",
+                        "(Ljava/lang/String;)V",
+                        &[JValue::Object(&j_str.into())]
+                    );
+                }
+            }
+        }
+    }
+
+    // Wait for process to complete
+    let _ = child.wait();
 }
