@@ -7,18 +7,27 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.xms.omakdroid.R
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -28,12 +37,9 @@ fun AmericanMegatrendsBiosScreen(
     onBootComplete: () -> Unit
 ) {
     val context = LocalContext.current
-    
     var blinkingCursor by remember { mutableStateOf(true) }
-    
-    // Fetch hardware info
     val biosInfo = remember { getBiosHardwareInfo(context) }
-    
+
     // Blinking cursor animation
     LaunchedEffect(Unit) {
         while (true) {
@@ -41,167 +47,226 @@ fun AmericanMegatrendsBiosScreen(
             blinkingCursor = !blinkingCursor
         }
     }
-    
+
     // Auto-navigate after 3 seconds (POST complete)
     LaunchedEffect(Unit) {
         delay(3000)
         onBootComplete()
     }
-    
-    Box(
+
+    // Modern macOS/Ubuntu blur-like background
+    val bgBrush = Brush.radialGradient(
+        colors = listOf(
+            Color(0xFF2D2D35), // Lighter dark center
+            Color(0xFF1A1A1E)  // Deep dark edge
+        )
+    )
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(bgBrush)
             .padding(24.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
+        val isLandscape = maxWidth > maxHeight
+        
+        // Outer Glass Container
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.05f))
+                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
         ) {
-            // Header Logo Section
-            Text(
-                text = "    /\\",
-                color = Color(0xFFFF6B35),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "   /  \\    OmakDroid",
-                color = Color(0xFFFF6B35),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "  /____\\   BIOS",
-                color = Color(0xFFFF6B35),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // BIOS Information
-            Text(
-                text = "OMAKBIOS(C)2026 XMS Community, Inc.",
-                color = Color.White,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = biosInfo.motherboard,
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // CPU Information
-            Text(
-                text = "CPU: ${biosInfo.cpu} Processor",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-            Text(
-                text = "Speed: ${biosInfo.cpuSpeed}",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Memory Information
-            Text(
-                text = "Total Memory: ${biosInfo.totalMemory}",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // USB Devices
-            Text(
-                text = "USB Devices total: 0 Drive, 1 Keyboard, 1 Mouse, 0 Hub",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Storage Detection
-            Text(
-                text = "Detected ATA/ATAPI Devices...",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "NVMe_1: UFS Host Controller (${biosInfo.storageSize})",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-            
-            Spacer(modifier = Modifier.weight(1f))
-            
-            // POST Status
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Performing POST (Power-On Self-Test)...",
-                    color = Color(0xFF00FF00),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp
-                )
-                if (blinkingCursor) {
-                    Text(
-                        text = "_",
-                        color = Color(0xFF00FF00),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp
+            if (isLandscape) {
+                // Landscape: Sidebar + Content
+                Row(modifier = Modifier.fillMaxSize()) {
+                    BiosSidebar(biosInfo = biosInfo, modifier = Modifier.weight(1f).fillMaxHeight())
+                    Divider(
+                        color = Color.White.copy(alpha = 0.1f),
+                        modifier = Modifier.fillMaxHeight().width(1.dp)
+                    )
+                    BiosMainContent(
+                        biosInfo = biosInfo,
+                        blinkingCursor = blinkingCursor,
+                        modifier = Modifier.weight(2f).fillMaxHeight().padding(24.dp)
+                    )
+                }
+            } else {
+                // Portrait: Stacked
+                Column(modifier = Modifier.fillMaxSize()) {
+                    BiosSidebar(biosInfo = biosInfo, modifier = Modifier.fillMaxWidth().wrapContentHeight())
+                    Divider(
+                        color = Color.White.copy(alpha = 0.1f),
+                        modifier = Modifier.fillMaxWidth().height(1.dp)
+                    )
+                    BiosMainContent(
+                        biosInfo = biosInfo,
+                        blinkingCursor = blinkingCursor,
+                        modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp)
                     )
                 }
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Footer
-            Text(
-                text = "Please enter setup to recover BIOS setting.",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp
-            )
-            Text(
-                text = "When RAID configuration was built, ensure to set SATA Configuration to RAID mode.",
-                color = Color(0xFFD3D3D3),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "Press F1 to Run SETUP",
-                color = Color.White,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
         }
+    }
+}
+
+@Composable
+private fun BiosSidebar(biosInfo: BiosHardwareInfo, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.2f))
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+            contentDescription = "OmakDroid Setup",
+            modifier = Modifier.size(64.dp),
+            tint = Color(0xFFE95420) // Ubuntu Orange
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "OmakDroid UEFI BIOS(C)2026 XMS, Com.",
+            color = Color.White,
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+        )
+        Text(
+            text = "Version 2.0.4",
+            color = Color.White.copy(alpha = 0.5f),
+            fontFamily = FontFamily.SansSerif,
+            fontSize = 12.sp
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Quick Stats vertical layout
+        BiosStatBlock(label = "CPU Speed", value = biosInfo.cpuSpeed)
+        Spacer(modifier = Modifier.height(16.dp))
+        BiosStatBlock(label = "Memory", value = biosInfo.totalMemory)
+        Spacer(modifier = Modifier.height(16.dp))
+        BiosStatBlock(label = "Primary Storage", value = "NVMe 1")
+    }
+}
+
+@Composable
+private fun BiosStatBlock(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.5f),
+            fontSize = 11.sp,
+            fontFamily = FontFamily.SansSerif
+        )
+        Text(
+            text = value,
+            color = Color(0xFFE95420),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.SansSerif
+        )
+    }
+}
+
+@Composable
+private fun BiosMainContent(
+    biosInfo: BiosHardwareInfo,
+    blinkingCursor: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = "System Information",
+            color = Color.White,
+            fontFamily = FontFamily.SansSerif,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        InfoRow("Motherboard", biosInfo.motherboard)
+        InfoRow("Processor", biosInfo.cpu)
+        InfoRow("Total Memory", biosInfo.totalMemory)
+        InfoRow("Storage Size", biosInfo.storageSize)
+        InfoRow("USB Devices", "0 Drive, 1 Keyboard, 1 Mouse, 0 Hub")
+        
+        Spacer(modifier = Modifier.weight(1f))
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.4f))
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "> Performing POST (Power-On Self-Test)...",
+                    color = Color(0xFF32CD32),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp
+                )
+                if (blinkingCursor) {
+                    Text(
+                        text = " █",
+                        color = Color(0xFF32CD32),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Footer
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Press F1 to enter setup",
+                color = Color.White.copy(alpha = 0.6f),
+                fontFamily = FontFamily.SansSerif,
+                fontSize = 12.sp
+            )
+            val ubuntuOrange = Color(0xFFE95420)
+            Row {
+                Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(6.dp)).background(ubuntuOrange))
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(6.dp)).background(Color.Gray))
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(6.dp)).background(Color.Gray))
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.6f),
+            fontFamily = FontFamily.SansSerif,
+            fontSize = 14.sp
+        )
+        Text(
+            text = value,
+            color = Color.White,
+            fontFamily = FontFamily.SansSerif,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
@@ -217,7 +282,7 @@ fun getBiosHardwareInfo(context: Context): BiosHardwareInfo {
     // Motherboard
     val manufacturer = Build.MANUFACTURER.uppercase()
     val model = Build.MODEL.uppercase()
-    val motherboard = "$manufacturer $model GAMING ACPI BIOS Revision 1.0"
+    val motherboard = "$manufacturer $model ACPI BIOS Ver 1.0"
     
     // CPU
     val cpu = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -241,13 +306,13 @@ fun getBiosHardwareInfo(context: Context): BiosHardwareInfo {
             val totalRamGB = memoryInfo.totalMem / (1024 * 1024 * 1024)
             
             when {
-                totalRamGB >= 12 -> "3000MHz"  // High-end
-                totalRamGB >= 6 -> "2400MHz"   // Mid-range
-                else -> "1800MHz"              // Low-end
+                totalRamGB >= 12 -> "3000MHz"  
+                totalRamGB >= 6 -> "2400MHz"   
+                else -> "1800MHz"              
             }
         }
     } catch (e: Exception) {
-        "2400MHz"  // Safe default
+        "2400MHz"  
     }
     
     // Total Memory
@@ -255,7 +320,7 @@ fun getBiosHardwareInfo(context: Context): BiosHardwareInfo {
     val memoryInfo = ActivityManager.MemoryInfo()
     activityManager.getMemoryInfo(memoryInfo)
     val totalRamMB = memoryInfo.totalMem / (1024 * 1024)
-    val totalMemory = "${totalRamMB}MB (LPDDR5)"
+    val totalMemory = "${totalRamMB}MB"
     
     // Storage Size
     val storageSize = try {
