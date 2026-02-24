@@ -18,6 +18,7 @@ class SettingsRepository(private val context: Context) {
         private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
         private val ORIENTATION_KEY = intPreferencesKey("screen_orientation")
         private val IS_SETUP_COMPLETE_KEY = booleanPreferencesKey("is_setup_complete")
+        private val USERNAME_KEY = androidx.datastore.preferences.core.stringPreferencesKey("username")
         const val DEFAULT_ORIENTATION = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
     }
 
@@ -29,6 +30,11 @@ class SettingsRepository(private val context: Context) {
     val isSetupCompleteFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
             preferences[IS_SETUP_COMPLETE_KEY] ?: false
+        }
+    
+    val usernameFlow: Flow<String?> = context.dataStore.data
+        .map { preferences ->
+            preferences[USERNAME_KEY]
         }
     
     suspend fun saveOrientation(orientation: Int) {
@@ -46,6 +52,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun resetSetup() {
         context.dataStore.edit { preferences ->
             preferences[IS_SETUP_COMPLETE_KEY] = false
+        }
+    }
+    
+    suspend fun saveUsername(username: String) {
+        context.dataStore.edit { preferences ->
+            preferences[USERNAME_KEY] = username
         }
     }
 }
