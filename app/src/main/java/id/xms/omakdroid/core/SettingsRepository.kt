@@ -19,7 +19,7 @@ class SettingsRepository(private val context: Context) {
         private val ORIENTATION_KEY = intPreferencesKey("screen_orientation")
         private val IS_SETUP_COMPLETE_KEY = booleanPreferencesKey("is_setup_complete")
         private val USERNAME_KEY = androidx.datastore.preferences.core.stringPreferencesKey("username")
-        const val DEFAULT_ORIENTATION = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        const val DEFAULT_ORIENTATION = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
 
     val orientationFlow: Flow<Int> = context.dataStore.data

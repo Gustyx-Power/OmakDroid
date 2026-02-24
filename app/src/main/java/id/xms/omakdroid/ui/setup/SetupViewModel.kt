@@ -18,6 +18,10 @@ import java.io.File
 
 class SetupViewModel : ViewModel() {
     
+    // Desktop Environment Selection
+    enum class DesktopEnv { XFCE, KDE, NONE }
+    val selectedDE = mutableStateOf(DesktopEnv.KDE)
+    
     // User Information
     val fullName = mutableStateOf("")
     val hostname = mutableStateOf("omakdroid")
@@ -36,6 +40,15 @@ class SetupViewModel : ViewModel() {
     val installProgress = mutableFloatStateOf(0f)
     val installStatusText = mutableStateOf("Preparing installation...")
     
+    // Real-time APT Progress
+    val currentAction = mutableStateOf("")
+    val downloadSpeed = mutableStateOf("")
+    val etaText = mutableStateOf("")
+    
+    // Progress tracking for ETA calculation
+    private var lastProgressTime = 0L
+    private var lastProgressPercent = 0f
+    
     // Validation
     fun isUserSetupValid(): Boolean {
         return fullName.value.isNotBlank() &&
@@ -46,12 +59,93 @@ class SetupViewModel : ViewModel() {
                 username.value.matches(Regex("^[a-z_][a-z0-9_-]*$"))
     }
     
+    /**
+     * Parse APT machine-readable status output (APT::Status-Fd=1)
+     * Format: dlstatus:1:percent:description or pmstatus:package:percent:description
+     */
+    private fun parseAptStatus(line: String) {
+        try {
+            when {
+                line.startsWith("dlstatus:") -> {
+                    val parts = line.split(":")
+                    if (parts.size >= 4) {
+                        val percent = parts[2].toFloatOrNull() ?: return
+                        val description = parts.drop(3).joinToString(":")
+                        
+                        installProgress.floatValue = percent / 100f
+                        currentAction.value = description
+                        installStatusText.value = "Downloading: $description"
+                        
+                        updateETA(percent)
+                    }
+                }
+                line.startsWith("pmstatus:") -> {
+                    val parts = line.split(":")
+                    if (parts.size >= 4) {
+                        val percent = parts[2].toFloatOrNull() ?: return
+                        val description = parts.drop(3).joinToString(":")
+                        
+                        installProgress.floatValue = percent / 100f
+                        currentAction.value = description
+                        installStatusText.value = "Installing: $description"
+                        
+                        updateETA(percent)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SetupViewModel", "Failed to parse APT status: $line", e)
+        }
+    }
+    
+    /**
+     * Calculate download speed and ETA based on progress changes
+     */
+    private fun updateETA(currentPercent: Float) {
+        val currentTime = System.currentTimeMillis()
+        
+        if (lastProgressTime > 0 && currentPercent > lastProgressPercent) {
+            val timeDelta = (currentTime - lastProgressTime) / 1000.0 // seconds
+            val percentDelta = currentPercent - lastProgressPercent
+            
+            if (timeDelta > 0 && percentDelta > 0) {
+                val percentPerSecond = percentDelta / timeDelta
+                val remainingPercent = 100f - currentPercent
+                val etaSeconds = (remainingPercent / percentPerSecond).toInt()
+                
+                etaText.value = when {
+                    etaSeconds < 60 -> "About ${etaSeconds}s remaining"
+                    etaSeconds < 3600 -> "About ${etaSeconds / 60}m ${etaSeconds % 60}s remaining"
+                    else -> "About ${etaSeconds / 3600}h ${(etaSeconds % 3600) / 60}m remaining"
+                }
+                
+                // Estimate download speed (rough approximation)
+                val speedMBps = percentPerSecond * 0.5 // Rough estimate
+                downloadSpeed.value = String.format("%.1f MB/s", speedMBps)
+            }
+        }
+        
+        lastProgressTime = currentTime
+        lastProgressPercent = currentPercent
+    }
+    
     fun resetInstallation() {
         installProgress.floatValue = 0f
         installStatusText.value = "Preparing installation..."
+        currentAction.value = ""
+        downloadSpeed.value = ""
+        etaText.value = ""
+        lastProgressTime = 0L
+        lastProgressPercent = 0f
     }
     
     fun generateSetupScript(): String {
+        val deCommand = when (selectedDE.value) {
+            DesktopEnv.XFCE -> "apt-get install -y -o APT::Status-Fd=1 xfce4 xfce4-goodies dbus-x11"
+            DesktopEnv.KDE -> "apt-get install -y -o APT::Status-Fd=1 kde-plasma-desktop dbus-x11"
+            DesktopEnv.NONE -> ""
+        }
+        
         return """
             #!/bin/bash
             export DEBIAN_FRONTEND=noninteractive
@@ -63,8 +157,8 @@ class SetupViewModel : ViewModel() {
             usermod -aG sudo ${username.value}
             
             # Force install gnupg and keyrings FIRST
-            apt-get update -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true || true
-            apt-get install -y --allow-unauthenticated gnupg ubuntu-keyring ca-certificates sudo wget curl nano tzdata
+            apt-get update -o APT::Status-Fd=1 -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true || true
+            apt-get install -y -o APT::Status-Fd=1 --allow-unauthenticated gnupg ubuntu-keyring ca-certificates sudo wget curl nano tzdata
             
             # Try to fetch keys if gnupg is now installed
             apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 871920D1991BC93C || true
@@ -72,6 +166,12 @@ class SetupViewModel : ViewModel() {
             # Configure Timezone
             ln -fs /usr/share/zoneinfo/${timezone.value} /etc/localtime
             dpkg-reconfigure -f noninteractive tzdata
+            
+            # Update package lists
+            apt-get update -o APT::Status-Fd=1
+            
+            # Install Desktop Environment if selected
+            ${if (deCommand.isNotEmpty()) deCommand else "echo 'CLI-only mode, skipping DE installation'"}
             
             # Remove the insecure bypass
             rm -f /etc/apt/apt.conf.d/99-allow-unauth
@@ -197,12 +297,18 @@ class SetupViewModel : ViewModel() {
                 android.util.Log.i("SetupViewModel", "PRoot Path: $prootPath")
                 android.util.Log.i("SetupViewModel", "Rootfs Path: $rootfsPath")
                 android.util.Log.i("SetupViewModel", "Command: $command")
+                android.util.Log.i("SetupViewModel", "Desktop Environment: ${selectedDE.value}")
                 
-                // Set up output capture
+                // Set up output capture with real-time APT parsing
                 val outputBuffer = StringBuilder()
                 NativeEngine.onTerminalOutput = { line ->
                     android.util.Log.d("SetupExecution", line)
                     outputBuffer.append(line).append("\n")
+                    
+                    // Parse APT status lines in real-time
+                    if (line.startsWith("dlstatus:") || line.startsWith("pmstatus:")) {
+                        parseAptStatus(line)
+                    }
                 }
                 
                 // Execute via NativeEngine
@@ -210,7 +316,7 @@ class SetupViewModel : ViewModel() {
                 
                 // Wait for completion and monitor output
                 var elapsed = 0L
-                val timeout = 30000L // 30 seconds
+                val timeout = 300000L // 5 minutes for DE installation
                 while (elapsed < timeout) {
                     delay(1000)
                     elapsed += 1000

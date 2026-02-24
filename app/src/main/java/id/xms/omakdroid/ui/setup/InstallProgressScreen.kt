@@ -136,12 +136,53 @@ fun InstallProgressScreen(
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
+                        // Current Action
+                        if (viewModel.currentAction.value.isNotEmpty()) {
+                            Text(
+                                text = viewModel.currentAction.value,
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        
+                        // Status Text
                         Text(
                             text = viewModel.installStatusText.value,
                             fontFamily = FontFamily.SansSerif,
                             fontSize = 14.sp,
                             color = Color.White.copy(alpha = 0.8f)
                         )
+                        
+                        // Download Speed and ETA
+                        if (viewModel.downloadSpeed.value.isNotEmpty() || viewModel.etaText.value.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                if (viewModel.downloadSpeed.value.isNotEmpty()) {
+                                    Text(
+                                        text = viewModel.downloadSpeed.value,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 12.sp,
+                                        color = UbuntuOrange.copy(alpha = 0.8f)
+                                    )
+                                }
+                                
+                                if (viewModel.etaText.value.isNotEmpty()) {
+                                    Text(
+                                        text = viewModel.etaText.value,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 12.sp,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
                     } else {
                         Text(
                             text = errorMessage,

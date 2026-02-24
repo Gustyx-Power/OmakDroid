@@ -38,6 +38,14 @@ fun SetupWizard(
         composable("user_setup") {
             UserSetupScreen(
                 viewModel = viewModel,
+                onNext = { navController.navigate("desktop") },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        
+        composable("desktop") {
+            DesktopScreen(
+                viewModel = viewModel,
                 onNext = { navController.navigate("engine") },
                 onBack = { navController.popBackStack() }
             )
