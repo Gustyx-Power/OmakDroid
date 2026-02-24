@@ -37,29 +37,63 @@ fun TerminalScreen() {
     var terminalHistory by remember { mutableStateOf(listOf<String>()) }
     var currentInput by remember { mutableStateOf("") }
     var isExecuting by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf<String?>(null) }
+    var hostname by remember { mutableStateOf("localhost") }
     
     val prootPath = remember { File(context.applicationInfo.nativeLibraryDir, "libproot.so").absolutePath }
     val rootfsPath = remember { RootfsPathResolver.getTrueRootfsPath(context) }
     val tmpDir = remember { context.cacheDir.absolutePath }
     
-    // Initialize terminal with welcome message
+    // Load username from settings
     LaunchedEffect(Unit) {
-        val bootResult = withContext(Dispatchers.IO) {
-            try {
-                NativeEngine.bootLinuxKernel(prootPath, rootfsPath, tmpDir)
-            } catch (e: Exception) {
-                "Error: ${e.message}"
-            }
+        val settingsRepository = id.xms.omakdroid.core.SettingsRepository(context)
+        settingsRepository.usernameFlow.collect { savedUsername ->
+            username = savedUsername
         }
-        
-        terminalHistory = listOf(
-            bootResult,
-            "",
-            "Welcome to OmakDroid Terminal",
-            "Type 'help' for available commands, or any Linux command to execute.",
-            "DNS configured: 8.8.8.8, 1.1.1.1",
-            ""
-        )
+    }
+    
+    // Initialize terminal with welcome message and dynamic login
+    LaunchedEffect(username) {
+        if (username != null) {
+            val bootResult = withContext(Dispatchers.IO) {
+                try {
+                    // Boot with user login
+                    val loginCommand = "/bin/su - $username"
+                    android.util.Log.i("TerminalScreen", "Booting with user login: $loginCommand")
+                    NativeEngine.bootLinuxKernel(prootPath, rootfsPath, tmpDir)
+                } catch (e: Exception) {
+                    "Error: ${e.message}"
+                }
+            }
+            
+            terminalHistory = listOf(
+                bootResult,
+                "",
+                "Welcome to OmakDroid Terminal",
+                "Logged in as: $username",
+                "Type 'help' for available commands, or any Linux command to execute.",
+                ""
+            )
+        } else {
+            // Fallback to root if no username configured
+            val bootResult = withContext(Dispatchers.IO) {
+                try {
+                    android.util.Log.i("TerminalScreen", "Booting as root (no username configured)")
+                    NativeEngine.bootLinuxKernel(prootPath, rootfsPath, tmpDir)
+                } catch (e: Exception) {
+                    "Error: ${e.message}"
+                }
+            }
+            
+            terminalHistory = listOf(
+                bootResult,
+                "",
+                "Welcome to OmakDroid Terminal",
+                "Logged in as: root (setup not completed)",
+                "Type 'help' for available commands, or any Linux command to execute.",
+                ""
+            )
+        }
     }
     
     // Auto-scroll to bottom when history changes
@@ -103,9 +137,14 @@ fun TerminalScreen() {
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Prompt
+                val promptText = if (username != null) {
+                    "$username@$hostname:~$ "
+                } else {
+                    "root@$hostname:~# "
+                }
+                
                 Text(
-                    text = "root@localhost:~# ",
+                    text = promptText,
                     color = Color(0xFF00FF00),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp
@@ -132,8 +171,22 @@ fun TerminalScreen() {
                                 currentInput = ""
                                 isExecuting = true
                                 
+                                // Dynamic prompt for history
+                                val promptText = if (username != null) {
+                                    "$username@$hostname:~$ $command"
+                                } else {
+                                    "root@$hostname:~# $command"
+                                }
+                                
                                 // Add command to history
-                                terminalHistory = terminalHistory + "root@localhost:~# $command"
+                                terminalHistory = terminalHistory + promptText
+                                
+                                // Wrap command with su if username exists
+                                val actualCommand = if (username != null) {
+                                    "/bin/su - $username -c '$command'"
+                                } else {
+                                    command
+                                }
                                 
                                 // Set up streaming callback
                                 NativeEngine.onTerminalOutput = { line ->
@@ -144,7 +197,7 @@ fun TerminalScreen() {
                                 scope.launch(Dispatchers.IO) {
                                     try {
                                         NativeEngine.executeLinuxCommand(
-                                            command,
+                                            actualCommand,
                                             prootPath,
                                             rootfsPath,
                                             tmpDir

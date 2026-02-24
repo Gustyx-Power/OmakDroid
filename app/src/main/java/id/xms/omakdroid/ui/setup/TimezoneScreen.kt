@@ -1,14 +1,20 @@
 package id.xms.omakdroid.ui.setup
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,117 +38,156 @@ fun TimezoneScreen(
         "Australia/Sydney"
     )
     var expanded by remember { mutableStateOf(false) }
-    
-    Box(
+
+    val bgBrush = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xFF2C2C2E),
+            Color(0xFF1C1C1E)
+        )
+    )
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF111111))
+            .background(bgBrush)
     ) {
+        val isLandscape = maxWidth > maxHeight
+        val cardWidth = if (isLandscape) maxWidth * 0.6f else maxWidth * 0.9f
+        val maxCardWidth = 550.dp
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            // Title
-            Text(
-                text = "Where are you?",
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Text(
-                text = "Select your timezone to ensure accurate time settings",
-                fontSize = 16.sp,
-                color = Color(0xFFD3D3D3)
-            )
-            
-            Spacer(modifier = Modifier.height(64.dp))
-            
-            // Timezone Selection
-            Text(
-                text = "Timezone:",
-                fontSize = 16.sp,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Start)
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded },
-                modifier = Modifier.fillMaxWidth(0.6f)
+            Spacer(modifier = Modifier.weight(1f, fill = false))
+
+            // Main Setup Card
+            Box(
+                modifier = Modifier
+                    .width(minOf(cardWidth, maxCardWidth))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White.copy(alpha = 0.05f))
+                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
+                    .shadow(12.dp, RoundedCornerShape(20.dp), ambientColor = Color.Black.copy(alpha = 0.5f))
+                    .padding(32.dp)
             ) {
-                OutlinedTextField(
-                    value = viewModel.timezone.value,
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = UbuntuOrange,
-                        unfocusedBorderColor = Color.Gray,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    )
-                )
-                
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    timezones.forEach { timezone ->
-                        DropdownMenuItem(
-                            text = { Text(timezone) },
-                            onClick = {
-                                viewModel.timezone.value = timezone
-                                expanded = false
-                            }
+                    // Title
+                    Text(
+                        text = "Where are you?",
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Select your timezone to ensure accurate time settings",
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 14.sp,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // Timezone Selection
+                    Text(
+                        text = "Timezone:",
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 14.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = viewModel.timezone.value,
+                            onValueChange = {},
+                            readOnly = true,
+                            shape = RoundedCornerShape(12.dp),
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = UbuntuOrange,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White.copy(alpha = 0.9f),
+                                focusedContainerColor = Color.Black.copy(alpha = 0.2f),
+                                unfocusedContainerColor = Color.Black.copy(alpha = 0.2f),
+                            )
                         )
+
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.background(Color(0xFF2C2C2E))
+                        ) {
+                            timezones.forEach { timezone ->
+                                DropdownMenuItem(
+                                    text = { Text(timezone, color = Color.White) },
+                                    onClick = {
+                                        viewModel.timezone.value = timezone
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.weight(1f))
-            
+            Spacer(modifier = Modifier.height(24.dp))
+
             // Navigation Buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.width(minOf(cardWidth, maxCardWidth)),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedButton(
                     onClick = onBack,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .padding(end = 8.dp),
+                    modifier = Modifier.height(48.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = UbuntuOrange
-                    )
+                        contentColor = Color.White.copy(alpha = 0.8f)
+                    ),
+                    border = null // Clean minimal look
                 ) {
-                    Text("Back", fontSize = 18.sp)
+                    Text("Back", fontFamily = FontFamily.SansSerif, fontSize = 15.sp)
                 }
-                
+
                 Button(
                     onClick = onNext,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .padding(start = 8.dp),
+                    modifier = Modifier.height(48.dp).width(120.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = UbuntuOrange
+                        containerColor = UbuntuOrange,
+                        contentColor = Color.White
                     )
                 ) {
-                    Text("Next", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Continue", fontFamily = FontFamily.SansSerif, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
