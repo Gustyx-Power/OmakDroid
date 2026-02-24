@@ -54,6 +54,7 @@ fun SetupWizard(
         composable("install_progress") {
             InstallProgressScreen(
                 viewModel = viewModel,
+                settingsRepository = settingsRepository,
                 onComplete = { navController.navigate("complete") }
             )
         }
