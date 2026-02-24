@@ -1,5 +1,20 @@
 # Rust Engine JNI Build Instructions
 
+## Overview For Developers
+
+The Rust Engine now handles the PRoot execution at a native level, providing better performance and lower-level control over the Linux kernel boot process.
+
+## Automatic Rootfs Patching
+
+The Rust Engine automatically applies silent fixes before every PRoot execution to prevent common Android kernel errors:
+
+1. **DNS Configuration** - Injects `/etc/resolv.conf` with Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1)
+2. **ldconfig Dummy** - Creates `/sbin/ldconfig` stub to prevent Android kernel permission errors
+3. **dpkg-maintscript-helper Dummy** - Creates `/usr/bin/dpkg-maintscript-helper` stub to prevent dpkg errors
+4. **GPG Keyring Auto-Copy** - Copies Ubuntu archive keyring to `/etc/apt/trusted.gpg.d/` to fix NO_PUBKEY errors
+
+These patches are applied silently on every boot and command execution, so end-users never need to manually fix these issues.
+
 ## Building the Rust Library
 
 Developer's need to compile the Rust code into a `.so` file for Android. Here are your options:
@@ -73,11 +88,29 @@ RUST ENGINE STATUS
 OMAKDROID RUST ENGINE ONLINE! 🦀
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 KERNEL INITIALIZATION
-[kernel boot output...]
+PRoot: /data/app/.../lib/arm64/libproot.so
+Rootfs: /data/user/0/.../files/rootfs
+Exit Code: 0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ KERNEL BOOT SUCCESS (RUST ENGINE)
+
+OMAKDROID KERNEL (POWERED BY RUST) ONLINE
+---
+Linux localhost 5.x.x-android #1 SMP PREEMPT ...
+---
+NAME="Ubuntu"
+VERSION="24.03 LTS (Noble Numbat)"
+...
 ```
 
 ## Troubleshooting
 
 - If you see "Rust Engine Error: ...", check Android Studio's Logcat for the UnsatisfiedLinkError details
 - Ensure the `.so` file is in the correct architecture folder (arm64-v8a for most devices)
-- Verify the JNI function signature matches exactly: `Java_id_xms_omakdroid_NativeEngine_pingEngine`
+- Verify the JNI function signatures match exactly:
+  - `Java_id_xms_omakdroid_core_engine_NativeEngine_pingEngine`
+  - `Java_id_xms_omakdroid_core_engine_NativeEngine_bootLinuxKernel`
+  - `Java_id_xms_omakdroid_core_engine_NativeEngine_executeLinuxCommand`
+- Check that PRoot binary exists at `app/src/main/jniLibs/arm64-v8a/libproot.so`
+- Verify rootfs was extracted during BIOS initialization

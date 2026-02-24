@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
 
 #[no_mangle]
-pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_initEngine(
+pub extern "system" fn Java_id_xms_omakdroid_core_engine_NativeEngine_initEngine(
     _env: JNIEnv,
     _class: JClass,
 ) -> jboolean {
@@ -13,7 +13,7 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_initEngine(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeCommand(
+pub extern "system" fn Java_id_xms_omakdroid_core_engine_NativeEngine_executeCommand(
     _env: JNIEnv,
     _class: JClass,
     _command: JObject,
@@ -22,7 +22,7 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeCommand(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_pingEngine<'local>(
+pub extern "system" fn Java_id_xms_omakdroid_core_engine_NativeEngine_pingEngine<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jni::sys::jstring {
@@ -32,7 +32,7 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_pingEngine<'local>(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_bootLinuxKernel<'local>(
+pub extern "system" fn Java_id_xms_omakdroid_core_engine_NativeEngine_bootLinuxKernel<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     proot_path: JString<'local>,
@@ -52,10 +52,27 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_bootLinuxKernel<'local
         .get_string(&tmp_dir)
         .expect("Invalid tmp dir")
         .into();
-
-    // Auto-inject DNS configuration
+    
+    // 1. Inject DNS configuration (resolv.conf)
     let resolv_path = format!("{}/etc/resolv.conf", rootfs);
     let _ = std::fs::write(&resolv_path, "nameserver 8.8.8.8\nnameserver 1.1.1.1\n");
+
+    // 2. Inject ldconfig dummy (fixes Android kernel permission errors)
+    let ldconfig_path = format!("{}/sbin/ldconfig", rootfs);
+    let _ = std::fs::write(&ldconfig_path, "#!/bin/sh\nexit 0\n");
+    let _ = Command::new("chmod").arg("755").arg(&ldconfig_path).status();
+
+    // 3. Inject dpkg-maintscript-helper dummy (fixes dpkg errors)
+    let dpkg_helper_path = format!("{}/usr/bin/dpkg-maintscript-helper", rootfs);
+    let _ = std::fs::write(&dpkg_helper_path, "#!/bin/sh\nexit 0\n");
+    let _ = Command::new("chmod").arg("755").arg(&dpkg_helper_path).status();
+
+    // 4. Fix NO_PUBKEY APT errors by copying the Ubuntu archive keyring
+    let gpg_source = format!("{}/usr/share/keyrings/ubuntu-archive-keyring.gpg", rootfs);
+    let gpg_dest = format!("{}/etc/apt/trusted.gpg.d/ubuntu-archive-keyring.gpg", rootfs);
+    let gpg_dir = format!("{}/etc/apt/trusted.gpg.d", rootfs);
+    let _ = std::fs::create_dir_all(&gpg_dir);
+    let _ = std::fs::copy(&gpg_source, &gpg_dest);
 
     // Execute PRoot with the same arguments as the Kotlin version
     let output = Command::new(&proot)
@@ -119,7 +136,7 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_bootLinuxKernel<'local
 }
 
 #[no_mangle]
-pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeLinuxCommand<'local>(
+pub extern "system" fn Java_id_xms_omakdroid_core_engine_NativeEngine_executeLinuxCommand<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     command: JString<'local>,
@@ -145,9 +162,26 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeLinuxCommand<'l
         .expect("Invalid tmp dir")
         .into();
 
-    // Auto-inject DNS configuration
+    // 1. Inject DNS configuration (resolv.conf)
     let resolv_path = format!("{}/etc/resolv.conf", rootfs);
     let _ = std::fs::write(&resolv_path, "nameserver 8.8.8.8\nnameserver 1.1.1.1\n");
+
+    // 2. Inject ldconfig dummy (fixes Android kernel permission errors)
+    let ldconfig_path = format!("{}/sbin/ldconfig", rootfs);
+    let _ = std::fs::write(&ldconfig_path, "#!/bin/sh\nexit 0\n");
+    let _ = Command::new("chmod").arg("755").arg(&ldconfig_path).status();
+
+    // 3. Inject dpkg-maintscript-helper dummy (fixes dpkg errors)
+    let dpkg_helper_path = format!("{}/usr/bin/dpkg-maintscript-helper", rootfs);
+    let _ = std::fs::write(&dpkg_helper_path, "#!/bin/sh\nexit 0\n");
+    let _ = Command::new("chmod").arg("755").arg(&dpkg_helper_path).status();
+
+    // 4. Fix NO_PUBKEY APT errors by copying the Ubuntu archive keyring
+    let gpg_source = format!("{}/usr/share/keyrings/ubuntu-archive-keyring.gpg", rootfs);
+    let gpg_dest = format!("{}/etc/apt/trusted.gpg.d/ubuntu-archive-keyring.gpg", rootfs);
+    let gpg_dir = format!("{}/etc/apt/trusted.gpg.d", rootfs);
+    let _ = std::fs::create_dir_all(&gpg_dir);
+    let _ = std::fs::copy(&gpg_source, &gpg_dest);
 
     // Merge stderr to stdout
     let full_cmd = format!("{} 2>&1", cmd_str);
@@ -185,7 +219,7 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeLinuxCommand<'l
                 // Send error message via callback
                 let error_msg = format!("Error: Failed to execute command: {}\n", e);
                 if let Ok(j_str) = env.new_string(&error_msg) {
-                    let class = env.find_class("id/xms/omakdroid/NativeEngine").ok();
+                    let class = env.find_class("id/xms/omakdroid/core/engine/NativeEngine").ok();
                     if let Some(cls) = class {
                         let _ = env.call_static_method(
                             cls,
@@ -204,7 +238,7 @@ pub extern "system" fn Java_id_xms_omakdroid_NativeEngine_executeLinuxCommand<'l
         let reader = BufReader::new(stdout);
         
         // Find the NativeEngine class for callbacks
-        let class = match env.find_class("id/xms/omakdroid/NativeEngine") {
+        let class = match env.find_class("id/xms/omakdroid/core/engine/NativeEngine") {
             Ok(cls) => cls,
             Err(_) => return,
         };

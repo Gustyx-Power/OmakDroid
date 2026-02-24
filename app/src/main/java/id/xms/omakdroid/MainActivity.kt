@@ -1,5 +1,6 @@
 package id.xms.omakdroid
 
+import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -23,8 +24,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import id.xms.omakdroid.core.engine.NativeEngine
+import id.xms.omakdroid.core.engine.RootfsPathResolver
+import id.xms.omakdroid.ui.screens.*
 import id.xms.omakdroid.ui.theme.OmakDroidTheme
-import android.content.Context
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -32,7 +35,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)        
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         
-        // Enable immersive mode
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         
@@ -48,7 +50,18 @@ class MainActivity : ComponentActivity() {
 fun OmakDroidApp() {
     val navController = rememberNavController()
     
-    NavHost(navController = navController, startDestination = "fake_bios") {
+    NavHost(navController = navController, startDestination = "boot_splash") {
+        composable("boot_splash") {
+            BootSplashScreen(
+                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                onBootComplete = {
+                    navController.navigate("fake_bios") {
+                        popUpTo("boot_splash") { inclusive = true }
+                    }
+                }
+            )
+        }
+        
         composable("fake_bios") {
             FakeBiosScreen(
                 onBootComplete = {
@@ -104,7 +117,6 @@ fun DesktopScreen() {
     var testColor by remember { mutableStateOf(Color.Yellow) }
     
     LaunchedEffect(Unit) {
-        // Test Rust JNI handshake
         try {
             rustEngineStatus = NativeEngine.pingEngine()
         } catch (e: Exception) {
@@ -196,29 +208,27 @@ fun DesktopScreen() {
     }
 }
 
+/**
+ * Boot the OmakDroid kernel using PRoot and the Rust engine.
+ */
 fun bootOmakDroidKernel(context: Context): String {
     return try {
         val prootPath = File(context.applicationInfo.nativeLibraryDir, "libproot.so").absolutePath
-        val rootfsPath = File(context.filesDir, "rootfs").absolutePath
+        val rootfsPath = RootfsPathResolver.getTrueRootfsPath(context)
         
         val prootFile = File(prootPath)
         if (!prootFile.exists()) {
-            return "Error: PRoot binary not found at $prootPath\n" +
-                   "Expected location: ${context.applicationInfo.nativeLibraryDir}/libproot.so\n" +
-                   "Please ensure the binary is placed in app/src/main/jniLibs/arm64-v8a/libproot.so before building."
+            return "Error: PRoot binary not found at $prootPath"
         }
         
-        val rootfsDir = File(rootfsPath)
-        if (!rootfsDir.exists()) {
-            return "Error: Rootfs not found at $rootfsPath\n" +
-                   "Please ensure rootfs is extracted during BIOS initialization."
+        if (!RootfsPathResolver.rootfsExists(context)) {
+            return "Error: Rootfs not found"
         }
         
         android.util.Log.i("OmakKernel", "Booting Linux environment via Rust Engine...")
         android.util.Log.i("OmakKernel", "PRoot: $prootPath")
         android.util.Log.i("OmakKernel", "Rootfs: $rootfsPath")
         
-        // Execute via Rust Engine instead of Kotlin ProcessBuilder
         val result = NativeEngine.bootLinuxKernel(
             prootPath,
             rootfsPath,
@@ -233,7 +243,6 @@ fun bootOmakDroidKernel(context: Context): String {
         android.util.Log.e("OmakKernel", "Exception during kernel boot", e)
         "Error: Exception occurred during kernel boot\n" +
         "Type: ${e.javaClass.simpleName}\n" +
-        "Message: ${e.message}\n" +
-        "Stack trace:\n${e.stackTraceToString().take(500)}"
+        "Message: ${e.message}"
     }
 }
