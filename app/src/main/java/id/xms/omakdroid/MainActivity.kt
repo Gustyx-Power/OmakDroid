@@ -20,43 +20,77 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import id.xms.omakdroid.core.engine.NativeEngine
 import id.xms.omakdroid.core.engine.RootfsPathResolver
+import id.xms.omakdroid.core.SystemChecker
+import id.xms.omakdroid.core.SettingsRepository
 import id.xms.omakdroid.ui.screens.*
+import id.xms.omakdroid.ui.setup.SetupWizard
 import id.xms.omakdroid.ui.theme.OmakDroidTheme
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    private lateinit var settingsRepository: SettingsRepository
+    
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)        
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        super.onCreate(savedInstanceState)
         
+        // Initialize libsu for proper root detection
+        SystemChecker.initialize()
+        
+        // Initialize settings repository
+        settingsRepository = SettingsRepository(this)
+        
+        // Enable fullscreen immersive mode
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         
         setContent {
+            val orientation by settingsRepository.orientationFlow.collectAsState(
+                initial = SettingsRepository.DEFAULT_ORIENTATION
+            )
+            
+            LaunchedEffect(orientation) {
+                requestedOrientation = orientation
+            }
+            
             OmakDroidTheme {
-                OmakDroidApp()
+                OmakDroidApp(settingsRepository)
             }
         }
     }
 }
 
 @Composable
-fun OmakDroidApp() {
+fun OmakDroidApp(settingsRepository: SettingsRepository) {
     val navController = rememberNavController()
+    val isSetupComplete by settingsRepository.isSetupCompleteFlow.collectAsState(initial = false)
     
     NavHost(navController = navController, startDestination = "boot_splash") {
         composable("boot_splash") {
             BootSplashScreen(
                 viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
                 onBootComplete = {
-                    navController.navigate("fake_bios") {
-                        popUpTo("boot_splash") { inclusive = true }
+                    if (isSetupComplete) {
+                        navController.navigate("fake_bios") {
+                            popUpTo("boot_splash") { inclusive = true }
+                        }
+                    } else {
+                        navController.navigate("setup_wizard") {
+                            popUpTo("boot_splash") { inclusive = true }
+                        }
                     }
                 }
             )
@@ -74,9 +108,22 @@ fun OmakDroidApp() {
         
         composable("grub") {
             GrubScreen(
+                settingsRepository = settingsRepository,
                 onBootSequenceTriggered = {
                     navController.navigate("boot_log") {
                         popUpTo("grub") { inclusive = true }
+                    }
+                }
+            )
+        }
+        
+        composable("setup_wizard") {
+            SetupWizard(
+                settingsRepository = settingsRepository,
+                onSetupComplete = {
+                    navController.navigate("boot_splash") {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
             )
